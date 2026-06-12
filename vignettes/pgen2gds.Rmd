@@ -16,6 +16,7 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ```
 
+
 # Introduction
 
 [PLINK](https://www.cog-genomics.org/plink/2.0/) is one of the most widely
@@ -47,7 +48,7 @@ PLINK2.
 [SeqArray](https://bioconductor.org/packages/SeqArray), and
 [pgenlibr](https://cran.r-project.org/package=pgenlibr).
 
-```r
+```{r install, eval=FALSE}
 if (!requireNamespace("BiocManager", quietly=TRUE))
     install.packages("BiocManager")
 BiocManager::install("pgen2gds")
@@ -99,7 +100,7 @@ SeqArray GDS file. When only the `.pgen` path is provided, the `.pvar` and
 ```{r convert}
 gds_fn <- tempfile(fileext = ".gds")
 
-seqPGEN2GDS(pgen_fn, out.gdsfn = gds_fn)
+seqPGEN2GDS(pgen_fn, out.gdsfn=gds_fn)
 ```
 
 ## Explore the GDS file
@@ -180,8 +181,47 @@ For large datasets, parallel processing can speed up the conversion:
 
 ```R
 # Use 2 cores
-seqPGEN2GDS(pgen_fn, out.gdsfn = "output.gds", parallel=2)
+seqPGEN2GDS(pgen_fn, out.gdsfn="output.gds", parallel=2)
 ```
+
+
+# Integration with Bioconductor
+
+Once data are stored in SeqArray GDS format, you can leverage Bioconductor
+packages for downstream analysis. Here we demonstrate computing allele
+frequencies and constructing a `GRanges` object from the converted file.
+
+```{r bioc-integration}
+suppressPackageStartupMessages(library(GenomicRanges))
+
+# Re-open the converted GDS file
+gds <- seqOpen(gds_fn)
+
+# Compute reference allele frequency per variant
+af <- seqAlleleFreq(gds)
+summary(af)
+```
+
+```{r bioc-granges}
+# Build a GRanges object from variant positions
+gr <- GRanges(
+    seqnames = seqGetData(gds, "chromosome"),
+    ranges = IRanges(start=seqGetData(gds, "position"), width=1L),
+    ref.freq = af
+)
+gr
+```
+
+```{r bioc-missing}
+# Per-variant missing rate
+mr <- seqMissing(gds)
+summary(mr)
+```
+
+```{r bioc-close}
+seqClose(gds)
+```
+
 
 # Cleanup
 
@@ -189,6 +229,7 @@ seqPGEN2GDS(pgen_fn, out.gdsfn = "output.gds", parallel=2)
 # Remove the generated GDS file
 unlink(gds_fn, force = TRUE)
 ```
+
 
 # Session Info
 

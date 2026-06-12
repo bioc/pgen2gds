@@ -22,7 +22,7 @@
 # Internal functions
 #
 
-.cat <- function(...) cat(..., "\n", sep="")
+.cat <- function(...) message(paste0(...))
 
 .tm <- function() strftime(Sys.time(), "%Y-%m-%d %H:%M:%S")
 
@@ -132,6 +132,156 @@ seqReadPVAR <- function(pvar, sel=NULL)
 
 
 #############################################################
+# Internal: validate and process variant selection
+#
+.validate_variant_sel <- function(variant.sel, nvar)
+{
+    if (is.logical(variant.sel))
+    {
+        if (length(variant.sel) != nvar)
+            stop("'length(variant.sel)' should be ", nvar, ".")
+        variant.sel <- which(variant.sel)
+        if (length(variant.sel) <= 0L)
+            stop("There is no selected variant in 'variant.sel'.")
+    } else if (is.numeric(variant.sel))
+    {
+        if (!is.integer(variant.sel))
+            variant.sel <- as.integer(variant.sel)
+        if (anyNA(variant.sel))
+            stop("'variant.sel' should not have NA.")
+        if (length(variant.sel) <= 0L)
+            stop("There is no selected variant in 'variant.sel'.")
+        if (anyDuplicated(variant.sel))
+            stop("'variant.sel' should not have any duplicates.")
+        variant.sel <- sort(variant.sel)
+        if (variant.sel[1L] < 1L || variant.sel[length(variant.sel)] > nvar)
+            stop("'variant.sel' should be between 1 and ", nvar, ".")
+    } else {
+        stop("'variant.sel' should be NULL or a logical/numeric vector.")
+    }
+    variant.sel
+}
+
+#############################################################
+# Internal: validate and process sample selection
+#
+.validate_sample_sel <- function(sample.sel, nsamp)
+{
+    if (is.logical(sample.sel))
+    {
+        if (length(sample.sel) != nsamp)
+            stop("'length(sample.sel)' should be ", nsamp, ".")
+        sample.sel <- which(sample.sel)
+    } else if (is.numeric(sample.sel))
+    {
+        if (!is.integer(sample.sel))
+            sample.sel <- as.integer(sample.sel)
+        if (anyNA(sample.sel))
+            stop("'sample.sel' should not have NA.")
+        if (anyDuplicated(sample.sel))
+            stop("'sample.sel' should not have any duplicates.")
+        sample.sel <- sort(sample.sel)
+        if (length(sample.sel) > 0L)
+        {
+            if (sample.sel[1L] < 1L ||
+                sample.sel[length(sample.sel)] > nsamp)
+            {
+                stop("'sample.sel' should be between 1 and ", nsamp, ".")
+            }
+        }
+    } else {
+        stop("'sample.sel' should be NULL or a logical/numeric vector.")
+    }
+    if (length(sample.sel) <= 0L)
+        stop("There is no selected sample in 'sample.sel'.")
+    sample.sel
+}
+
+#############################################################
+# Internal: write variant metadata (chromosome, position, allele, id) to GDS
+#
+.write_variant_annot <- function(dstfile, pvar, variant.sel, start, count,
+    compress.annot, ignore.chr.prefix, digest, verbose)
+{
+    # add chromosome
+    if (verbose) message("    chromosome  ", appendLF=FALSE)
+    strip_chr <- length(ignore.chr.prefix) > 0L
+    if (strip_chr)
+    {
+        escaped <- gsub("([.\\|^$*+?(){}\\[\\]])", "\\\\\\1",
+            ignore.chr.prefix)
+        ignore.chr.prefix <- paste0("^(",
+            paste(escaped, collapse="|"), ")")
+    }
+    n <- add.gdsn(dstfile, "chromosome", storage="string",
+        compress=compress.annot)
+    fc2 <- if (strip_chr)
+        function(s) {
+            r <- sub(ignore.chr.prefix, "", s, ignore.case=TRUE)
+            ifelse(nchar(r) == 0L, s, r)
+        } else identity
+    if (is.null(variant.sel))
+    {
+        .append_fc_gds(n, start, count, "",
+            function(i) GetVariantChrom(pvar, i), fc2)
+    } else {
+        .append_fc_gds(n, start, count, "",
+            function(i) GetVariantChrom(pvar, variant.sel[i]), fc2)
+    }
+    SeqArray:::.DigestCode(n, digest, verbose, FALSE)
+    # RLE-coded chromosome
+    SeqArray:::.optim_chrom(dstfile)
+
+    # add position
+    if (verbose) message("    position  ", appendLF=FALSE)
+    n <- add.gdsn(dstfile, "position", storage="int32",
+        compress=compress.annot)
+    if (is.null(variant.sel))
+    {
+        .append_fc_gds(n, start, count, 0L, function(i) GetVariantPos(pvar, i))
+    } else {
+        .append_fc_gds(n, start, count, 0L,
+            function(i) GetVariantPos(pvar, variant.sel[i]))
+    }
+    SeqArray:::.DigestCode(n, digest, verbose, FALSE)
+
+    # add allele
+    if (verbose) message("    allele  ", appendLF=FALSE)
+    n <- add.gdsn(dstfile, "allele", storage="string",
+        compress=compress.annot)
+    if (is.null(variant.sel))
+    {
+        .append_fc_gds(n, start, count, "", function(i) {
+            paste(vapply(seq_len(GetAlleleCt(pvar, i)), function(j)
+                GetAlleleCode(pvar, i, j), ""), collapse=",")
+        })
+    } else {
+        .append_fc_gds(n, start, count, "", function(i) {
+            i <- variant.sel[i]
+            paste(vapply(seq_len(GetAlleleCt(pvar, i)), function(j)
+                GetAlleleCode(pvar, i, j), ""), collapse=",")
+        })
+    }
+    SeqArray:::.DigestCode(n, digest, verbose, FALSE)
+
+    # add annotation/id (rsid)
+    if (verbose) message("    annotation/id  ", appendLF=FALSE)
+    nann <- addfolder.gdsn(dstfile, "annotation")
+    n <- add.gdsn(nann, "id", storage="string", compress=compress.annot)
+    if (is.null(variant.sel))
+    {
+        .append_fc_gds(n, start, count, "", function(i) GetVariantId(pvar, i))
+    } else {
+        .append_fc_gds(n, start, count, "",
+            function(i) GetVariantId(pvar, variant.sel[i]))
+    }
+    SeqArray:::.DigestCode(n, digest, verbose, FALSE)
+    sync.gds(dstfile)
+    invisible()
+}
+
+
+#############################################################
 # Format conversion from PGEN to GDS
 #
 seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
@@ -217,31 +367,8 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
 
     if (!is.null(variant.sel))
     {
-        if (is.logical(variant.sel))
-        {
-            if (length(variant.sel) != nvar)
-                stop("'length(variant.sel)' should be ", nvar, ".")
-            variant.sel <- which(variant.sel)
-            nvar <- length(variant.sel)
-            if (nvar <= 0L)
-                stop("There is no selected variant in 'variant.sel'.")
-        } else if (is.numeric(variant.sel))
-        {
-            if (!is.integer(variant.sel))
-                variant.sel <- as.integer(variant.sel)
-            if (anyNA(variant.sel))
-                stop("'variant.sel' should not have NA.")
-            nvar <- length(variant.sel)
-            if (nvar <= 0L)
-                stop("There is no selected variant in 'variant.sel'.")
-            if (anyDuplicated(variant.sel))
-                stop("'variant.sel' should not have any duplicate.")
-            variant.sel <- sort(variant.sel)
-            if (variant.sel[1L]<1L || variant.sel[nvar]>nvar_tot)
-                stop("'variant.sel' should be between 1 and ", nvar_tot, ".")
-        } else {
-            stop("'variant.sel' should be NULL or a logical/numeric vector.")
-        }
+        variant.sel <- .validate_variant_sel(variant.sel, nvar_tot)
+        nvar <- length(variant.sel)
     }
 
     if (is.na(start) || start<1L) start <- 1L
@@ -279,34 +406,7 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
     nsamp_tot <- nsamp
     if (!is.null(sample.sel))
     {
-        if (is.logical(sample.sel))
-        {
-            if (length(sample.sel) != nsamp_tot)
-                stop("'length(sample.sel)' should be ", nsamp_tot, ".")
-            sample.sel <- which(sample.sel)
-        } else if (is.numeric(sample.sel))
-        {
-            if (!is.integer(sample.sel))
-                sample.sel <- as.integer(sample.sel)
-            if (anyNA(sample.sel))
-                stop("'sample.sel' should not have NA.")
-            if (anyDuplicated(sample.sel))
-                stop("'sample.sel' should not have any duplicate.")
-            sample.sel <- sort(sample.sel)
-            if (length(sample.sel) > 0L)
-            {
-                if (sample.sel[1L] < 1L ||
-                    sample.sel[length(sample.sel)] > nsamp_tot)
-                {
-                    stop("'sample.sel' should be between 1 and ",
-                        nsamp_tot, ".")
-                }
-            }
-        } else {
-            stop("'sample.sel' should be NULL or a logical/numeric vector.")
-        }
-        if (length(sample.sel) <= 0L)
-            stop("There is no selected sample in 'sample.sel'.")
+        sample.sel <- .validate_sample_sel(sample.sel, nsamp_tot)
         sample.id <- sample.id[sample.sel]
         nsamp <- length(sample.sel)
         # reopen pgen with sample subset
@@ -331,7 +431,7 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
             .cat("    # of selected variants: ", nvar, " (from ",
                 nvar_tot, " variants)")
         }
-        cat("    Output:\n        ", out.gdsfn, "\n", sep="")
+        message("    Output:\n        ", out.gdsfn)
         if (start!=1L || count!=nvar)
             .cat("        (starting from ", start, ", count: ", count, ")")
     }
@@ -348,7 +448,7 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
                 m <- SeqArray:::.get_bl_multiple()
                 pnum <- as.integer(pnum * m)
                 if (verbose)
-                    cat("    (workload balancing)\n")
+                    message("    (workload balancing)")
             }
 
             fn <- sub("^([^.]*).*", "\\1", basename(out.gdsfn))
@@ -365,12 +465,11 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
             if (verbose)
             {
                 .cat("    output to path: ", file.path(dirname(out.gdsfn), ""))
-                cat(sprintf("    writing to %d files [%s]:\n", pnum, .tm()))
-                cat(sprintf("        %s [%s..%s]\n", basename(ptmpfn),
+                message(sprintf("    writing to %d files [%s]:", pnum, .tm()))
+                message(paste0(sprintf("        %s [%s..%s]", basename(ptmpfn),
                     .pretty(psplit[[1L]]),
                     .pretty(psplit[[1L]] + psplit[[2L]] - 1L)),
-                    sep="")
-                flush.console()
+                    collapse="\n"))
             }
 
             # reset memory
@@ -439,8 +538,8 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
             )
             if (verbose)
             {
-                cat("    done splitting (", .tm(), ")\n", sep="")
-                cat("    --------\n")
+                message("    done splitting (", .tm(), ")")
+                message("    --------")
             }
 
             # reopen the file
@@ -471,77 +570,20 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
         add.gdsn(n, "reference", reference, visible=FALSE)
 
     # add sample.id
-    if (verbose) cat("    sample.id  ")
+    if (verbose) message("    sample.id  ", appendLF=FALSE)
     n <- add.gdsn(dstfile, "sample.id", sample.id, compress=compress.annot,
         closezip=TRUE)
     SeqArray:::.DigestCode(n, digest, verbose, FALSE)
 
     # add variant.id
-    if (verbose) cat("    variant.id  ")
+    if (verbose) message("    variant.id  ", appendLF=FALSE)
     n <- add.gdsn(dstfile, "variant.id", seq.int(start, length.out=count),
         compress=compress.annot, closezip=TRUE)
     SeqArray:::.DigestCode(n, digest, verbose, FALSE)
 
-    # add chromosome
-    if (verbose) cat("    chromosome  ")
-    strip_chr <- length(ignore.chr.prefix) > 0L
-    if (strip_chr)
-    {
-        escaped <- gsub("([.\\|^$*+?(){}\\[\\]])", "\\\\\\1",
-            ignore.chr.prefix)
-        ignore.chr.prefix <- paste0("^(",
-            paste(escaped, collapse="|"), ")")
-    }
-    n <- add.gdsn(dstfile, "chromosome", storage="string",
-        compress=compress.annot)
-    fc2 <- if (strip_chr)
-        function(s) {
-            r <- sub(ignore.chr.prefix, "", s, ignore.case=TRUE)
-            ifelse(nchar(r) == 0L, s, r)
-        } else identity
-    if (is.null(variant.sel))
-    {
-        .append_fc_gds(n, start, count, "",
-            function(i) GetVariantChrom(pvar, i), fc2)
-    } else {
-        .append_fc_gds(n, start, count, "",
-            function(i) GetVariantChrom(pvar, variant.sel[i]), fc2)
-    }
-    SeqArray:::.DigestCode(n, digest, verbose, FALSE)
-    # RLE-coded chromosome
-    SeqArray:::.optim_chrom(dstfile)
-
-    # add position
-    if (verbose) cat("    position  ")
-    n <- add.gdsn(dstfile, "position", storage="int32",
-        compress=compress.annot)
-    if (is.null(variant.sel))
-    {
-        .append_fc_gds(n, start, count, 0L, function(i) GetVariantPos(pvar, i))
-    } else {
-        .append_fc_gds(n, start, count, 0L,
-            function(i) GetVariantPos(pvar, variant.sel[i]))
-    }
-    SeqArray:::.DigestCode(n, digest, verbose, FALSE)
-
-    # add allele
-    if (verbose) cat("    allele  ")
-    n <- add.gdsn(dstfile, "allele", storage="string",
-        compress=compress.annot)
-    if (is.null(variant.sel))
-    {
-        .append_fc_gds(n, start, count, "", function(i) {
-            paste(vapply(seq_len(GetAlleleCt(pvar, i)), function(j)
-                GetAlleleCode(pvar, i, j), ""), collapse=",")
-        })
-    } else {
-        .append_fc_gds(n, start, count, "", function(i) {
-            i <- variant.sel[i]
-            paste(vapply(seq_len(GetAlleleCt(pvar, i)), function(j)
-                GetAlleleCode(pvar, i, j), ""), collapse=",")
-        })
-    }
-    SeqArray:::.DigestCode(n, digest, verbose, FALSE)
+    # write variant annotations (chromosome, position, allele, id)
+    .write_variant_annot(dstfile, pvar, variant.sel, start, count,
+        compress.annot, ignore.chr.prefix, digest, verbose)
 
     # add a folder for genotypes & phase
     ngen <- addfolder.gdsn(dstfile, "genotype")
@@ -549,20 +591,8 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
     put.attr.gdsn(ngen, "Description", "Genotype")
     npha <- addfolder.gdsn(dstfile, "phase")
 
-    # add annotation folder
-    nann <- addfolder.gdsn(dstfile, "annotation")
-    # add annotation/id (rsid)
-    if (verbose) cat("    annotation/id  ")
-    n <- add.gdsn(nann, "id", storage="string", compress=compress.annot)
-    if (is.null(variant.sel))
-    {
-        .append_fc_gds(n, start, count, "", function(i) GetVariantId(pvar, i))
-    } else {
-        .append_fc_gds(n, start, count, "",
-            function(i) GetVariantId(pvar, variant.sel[i]))
-    }
-    SeqArray:::.DigestCode(n, digest, verbose, FALSE)
-    sync.gds(dstfile)
+    # add annotation folder (already created by .write_variant_annot)
+    nann <- index.gdsn(dstfile, "annotation")
 
     # add nodes for genotypes
     if (verbose)
@@ -605,7 +635,7 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
         remove(read_gt_fc, allele_num_fc, buf, ii, ia)
         # close the nodes
         readmode.gdsn(n_g)
-        if (verbose) cat("      ")
+        if (verbose) message("      ", appendLF=FALSE)
         SeqArray:::.DigestCode(n_g, digest, verbose)
         readmode.gdsn(n_i)
         SeqArray:::.DigestCode(n_i, digest, FALSE)
@@ -620,7 +650,7 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
         for (fn in ptmpfn)
         {
             if (verbose)
-                cat("        adding", sQuote(basename(fn)))
+                message("        adding ", sQuote(basename(fn)), appendLF=FALSE)
             writeLines(paste("Adding", basename(fn)), progfile)
             flush(progfile)
             # open the gds file
@@ -662,7 +692,7 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
     n <- add.gdsn(nann, "qual", storage="float", compress=compress.annot)
     SeqArray:::.append_rep_gds(n, NaN, nvar)
     readmode.gdsn(n)
-    if (verbose) cat("    annotation/qual")
+    if (verbose) message("    annotation/qual", appendLF=FALSE)
     SeqArray:::.DigestCode(n, digest, verbose)
 
     # add filter
@@ -672,7 +702,7 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
     put.attr.gdsn(n, "R.class", "factor")
     put.attr.gdsn(n, "R.levels", c("PASS"))
     put.attr.gdsn(n, "Description", c("All filters passed"))
-    if (verbose) cat("    annotation/filter")
+    if (verbose) message("    annotation/filter", appendLF=FALSE)
     SeqArray:::.DigestCode(n, digest, verbose)
 
     # add the INFO field
