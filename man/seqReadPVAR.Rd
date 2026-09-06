@@ -27,7 +27,7 @@ seqReadPVAR(pvar, sel=NULL)
 }
 \author{Xiuwen Zheng}
 \seealso{
-    \code{\link{seqPGEN2GDS}}
+    \code{\link{seqPGEN2GDS}}, \code{\link{seqGDS2PGEN}}
 }
 
 \examples{

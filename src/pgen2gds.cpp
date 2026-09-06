@@ -370,6 +370,11 @@ COREARRAY_DLL_EXPORT SEXP SEQ_PGEN_Geno_Import(
 }
 
 
+// gds2pgen.cpp
+extern SEXP SEQ_PGEN_Writer_Open(SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP SEQ_PGEN_Writer_Block(SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP SEQ_PGEN_Writer_Close(SEXP, SEXP);
+
 /// initialize the package
 COREARRAY_DLL_EXPORT void R_init_pgen2gds(DllInfo *info)
 {
@@ -378,6 +383,9 @@ COREARRAY_DLL_EXPORT void R_init_pgen2gds(DllInfo *info)
 	{
 		CALL(SEQ_PGEN_Geno_Import, 12),
 		CALL(SEQ_SetJobStatus, 2),
+		CALL(SEQ_PGEN_Writer_Open, 5),
+		CALL(SEQ_PGEN_Writer_Block, 5),
+		CALL(SEQ_PGEN_Writer_Close, 2),
 		{ NULL, NULL, 0 }
 	};
 	R_registerRoutines(info, NULL, callMethods, NULL, NULL);

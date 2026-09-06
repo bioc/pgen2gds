@@ -1,3 +1,17 @@
+CHANGES IN VERSION 0.99.4 (2026-09)
+-------------------------
+
+    o new function `seqGDS2PGEN()` for the conversion from SeqArray GDS to
+      PLINK2 PGEN (pgen, pvar and psam files), including multiallelic
+      genotypes and hardcall phase
+
+    o `seqPGEN2GDS()` stores the psam columns FID, PAT, MAT, SEX and the
+      phenotypes in 'sample.annotation'
+
+    o fix `seqReadPVAR()` when 'pvar' is an object returned from
+      pgenlibr::NewPvar()
+
+
 CHANGES IN VERSION 0.99.1 (2026-04)
 -------------------------
 

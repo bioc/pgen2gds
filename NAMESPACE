@@ -1,6 +1,7 @@
 # Load the shared object
 useDynLib(pgen2gds,
-    SEQ_PGEN_Geno_Import, SEQ_SetJobStatus
+    SEQ_PGEN_Geno_Import, SEQ_SetJobStatus,
+    SEQ_PGEN_Writer_Open, SEQ_PGEN_Writer_Block, SEQ_PGEN_Writer_Close
 )
 
 # Export the following names
@@ -10,5 +11,6 @@ exportPattern("^seq")
 import(methods)
 import(gdsfmt)
 import(pgenlibr)
-importFrom(utils, capture.output, flush.console, read.table)
-importFrom(SeqArray, seqParallel)
+importFrom(utils, capture.output, flush.console, read.table, write.table)
+importFrom(SeqArray, seqParallel, seqOpen, seqClose, seqGetData, seqSummary,
+    seqBlockApply)

@@ -95,6 +95,44 @@
 }
 
 
+# write sample.annotation/{family,father,mother,sex,phenotype} from a psam
+# data.frame (the same node names as SeqArray::seqBED2GDS)
+.write_sample_annot <- function(dstfile, fam, sample.sel, compress, verbose)
+{
+    if (!is.null(sample.sel)) fam <- fam[sample.sel, , drop=FALSE]
+    nm <- names(fam)
+    map <- c(FID="family", PAT="father", MAT="mother", SEX="sex")
+    has <- intersect(names(map), nm)
+    pheno <- setdiff(nm, c("FID", "IID", "SID", "PAT", "MAT", "SEX"))
+    if (length(has)==0L && length(pheno)==0L) return(invisible())
+    if (verbose) message("    sample.annotation:", appendLF=FALSE)
+    n <- addfolder.gdsn(dstfile, "sample.annotation")
+    for (k in has)
+    {
+        v <- fam[[k]]
+        if (k == "SEX")
+        {
+            # SeqArray convention: "M", "F" or ""
+            s <- rep("", length(v))
+            s[v %in% c("1", "M", "m", "male")] <- "M"
+            s[v %in% c("2", "F", "f", "female")] <- "F"
+            v <- s
+        }
+        add.gdsn(n, map[[k]], v, compress=compress, closezip=TRUE)
+        if (verbose) message(" ", map[[k]], appendLF=FALSE)
+    }
+    # the first phenotype column is 'phenotype', others keep their psam names
+    for (i in seq_along(pheno))
+    {
+        s <- if (i == 1L) "phenotype" else pheno[i]
+        add.gdsn(n, s, fam[[pheno[i]]], compress=compress, closezip=TRUE)
+        if (verbose) message(" ", s, appendLF=FALSE)
+    }
+    if (verbose) message("")
+    invisible()
+}
+
+
 #############################################################
 # Read PLINK2 pvar file and return a data.frame
 #
@@ -104,9 +142,10 @@ seqReadPVAR <- function(pvar, sel=NULL)
     {
         pvar <- NewPvar(pvar)
         on.exit(ClosePvar(pvar))
-    } else if (inherits(pvar, "pvar") && is(pvar$pvar, "externalptr"))
+    } else if (is.list(pvar) && identical(pvar$class, "pvar") &&
+        is(pvar$pvar, "externalptr"))
     {
-        # valid pvar object, use as-is
+        # valid pvar object (a list returned from pgenlibr::NewPvar), use as-is
     } else {
         stop("'pvar' should be a file name or an object ",
             "returned from pgenlibr::NewPvar().")
@@ -574,6 +613,7 @@ seqPGEN2GDS <- function(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
     n <- add.gdsn(dstfile, "sample.id", sample.id, compress=compress.annot,
         closezip=TRUE)
     SeqArray:::.DigestCode(n, digest, verbose, FALSE)
+    .write_sample_annot(dstfile, fam, sample.sel, compress.annot, verbose)
 
     # add variant.id
     if (verbose) message("    variant.id  ", appendLF=FALSE)

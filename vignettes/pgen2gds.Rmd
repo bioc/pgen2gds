@@ -1,13 +1,13 @@
 ---
-title: "Format Conversion from PLINK2 PGEN to SeqArray GDS"
+title: "Format Conversion between PLINK2 PGEN and SeqArray GDS"
 author: "Xiuwen Zheng"
-date: "Apr 2026"
+date: "Sep 2026"
 output:
     BiocStyle::html_document:
         toc: true
         toc_depth: 3
 vignette: >
-    %\VignetteIndexEntry{Format Conversion from PLINK2 PGEN to SeqArray GDS}
+    %\VignetteIndexEntry{Format Conversion between PLINK2 PGEN and SeqArray GDS}
     %\VignetteEngine{knitr::rmarkdown}
     %\VignetteEncoding{UTF-8}
 ---
@@ -39,7 +39,8 @@ relatedness estimation.
 The **pgen2gds** package bridges these two ecosystems by converting PLINK2
 PGEN files into SeqArray GDS files, enabling users to leverage the rich
 Bioconductor infrastructure for analysis while starting from data produced by
-PLINK2.
+PLINK2, and by converting SeqArray GDS files back to PLINK2 PGEN files so that
+data prepared in Bioconductor can be analyzed with PLINK2.
 
 # Installation
 
@@ -182,6 +183,46 @@ For large datasets, parallel processing can speed up the conversion:
 ```R
 # Use 2 cores
 seqPGEN2GDS(pgen_fn, out.gdsfn="output.gds", parallel=2)
+```
+
+
+# Conversion from GDS to PGEN
+
+`seqGDS2PGEN()` writes a SeqArray GDS file to a set of PLINK2 files
+(`.pgen`, `.pvar` and `.psam`). The sample and variant filters set by
+`seqSetFilter()` are respected, so a subset of the GDS file can be exported:
+
+```{r gds2pgen}
+out_prefix <- tempfile()
+
+gds <- seqOpen(gds_fn)
+seqSetFilter(gds, variant.sel=1:100)
+fns <- seqGDS2PGEN(gds, out_prefix)
+seqClose(gds)
+
+basename(fns)
+head(seqReadPVAR(fns[2]))
+```
+
+Multiallelic genotypes and the phase of heterozygous genotypes are kept in the
+`.pgen` file. A genotype with one missing allele (a half call or a haploid
+call) is written as missing by default; use `half.call="haploid"` to write it
+as a homozygous genotype instead. The chromosome prefix removed by
+`ignore.chr.prefix` during the import can be restored with `chr_prefix="chr"`.
+
+Each variant record is stored in the smallest of the dense 2-bit, 1-bit and
+difference-list encodings, following the thresholds used by PLINK2, but the
+LD-based encodings of PLINK2 are not used. The `.pgen` file can therefore be
+slightly larger than a file written by PLINK2 itself, especially for datasets
+with many common variants in strong linkage disequilibrium. If the smallest
+file size is required, re-encode the files with PLINK2:
+
+```bash
+plink2 --pfile <out_prefix> --make-pgen --out <new_prefix>
+```
+
+```{r gds2pgen-cleanup}
+unlink(fns, force=TRUE)
 ```
 
 

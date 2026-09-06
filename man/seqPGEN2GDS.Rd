@@ -55,6 +55,17 @@ seqPGEN2GDS(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
     \item{verbose}{if \code{TRUE}, show information}
 }
 
+\details{
+    The sample IDs are taken from the column \code{IID} of the psam file. The
+psam columns \code{FID}, \code{PAT}, \code{MAT} and \code{SEX} are stored in
+the GDS variables \code{sample.annotation/family},
+\code{sample.annotation/father}, \code{sample.annotation/mother} and
+\code{sample.annotation/sex} (coded as "M", "F" or "") if they exist, and the
+first phenotype column is stored in \code{sample.annotation/phenotype} (the
+same variables as created by \code{\link[SeqArray]{seqBED2GDS}}). Dosages and
+phase information in the pgen file are not imported.
+}
+
 \value{
     Return the file name of SeqArray GDS file with an absolute path.
 }
@@ -64,7 +75,7 @@ seqPGEN2GDS(pgen.fn, pvar.fn=NULL, psam.fn=NULL, out.gdsfn,
 }
 \author{Xiuwen Zheng}
 \seealso{
-    \code{\link{seqReadPVAR}}
+    \code{\link{seqGDS2PGEN}}, \code{\link{seqReadPVAR}}
 }
 
 \examples{

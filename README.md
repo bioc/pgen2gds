@@ -1,4 +1,4 @@
-pgen2gds: Format Conversion from PLINK2 PGEN to GDS
+pgen2gds: Format Conversion between PLINK2 PGEN and GDS
 ===
 
 ![GPLv3](http://www.gnu.org/graphics/gplv3-88x31.png)
@@ -7,12 +7,12 @@ pgen2gds: Format Conversion from PLINK2 PGEN to GDS
 
 ## Description
 
-This package provides functions for format conversion from [PLINK2 pgen](https://www.cog-genomics.org/plink/2.0) files to [SeqArray GDS](https://www.bioconductor.org/packages/SeqArray) files.
+This package provides functions for format conversion from [PLINK2 pgen](https://www.cog-genomics.org/plink/2.0) files to [SeqArray GDS](https://www.bioconductor.org/packages/SeqArray) files, and from SeqArray GDS files to PLINK2 pgen files.
 
 
 ## Version
 
-v0.99.1
+v0.99.4
 
 
 ## Package Maintainer
@@ -69,7 +69,21 @@ seqPGEN2GDS(pgen_fn, out.gdsfn="test.gds")
 ##     Output:
 ##         test.gds
 ## ...
+
+# Format conversion from GDS to PGEN (pgen, pvar and psam files)
+seqGDS2PGEN("test.gds", "test_out")
+## SeqArray GDS to PLINK2 PGEN:
+##     open 'test.gds'
+##     # of samples: 2,504
+##     # of variants: 482
+##     [Output]
+##     PSAM: test_out.psam
+##     PVAR: test_out.pvar
+##     PGEN: test_out.pgen
+## ...
 ```
+
+The pgen writer stores each variant record in the smallest of the dense 2-bit, 1-bit and difference-list encodings (with multiallelic and phase tracks), following the thresholds used by PLINK2, but it does not use the LD-based encodings of PLINK2. The output can therefore be slightly larger than a pgen file written by PLINK2 itself; run `plink2 --pfile test_out --make-pgen --out new` if the smallest file size is needed.
 
 
 ## Also See
