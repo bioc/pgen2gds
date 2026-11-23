@@ -1,7 +1,7 @@
 Package: pgen2gds
 Type: Package
 Title: Format Conversion between PLINK2 PGEN and GDS
-Version: 1.0.0
+Version: 1.1.0
 Date: 2026-09-05
 Depends: methods, gdsfmt (>= 1.24.0)
 Imports: SeqArray (>= 1.49.6), pgenlibr
